@@ -12,61 +12,140 @@ const chart = LightweightCharts.createChart(chartContainer, {
     }
 });
 
-// 1. Candlestick Series
+// 1. Candlestick Series (Standard)
 const candleSeries = chart.addCandlestickSeries({
-    upColor: '#2ea043',
-    downColor: '#f85149',
-    borderVisible: false,
-    wickUpColor: '#2ea043',
-    wickDownColor: '#f85149'
+    upColor: '#2ea043', downColor: '#f85149',
+    borderVisible: false, wickUpColor: '#2ea043', wickDownColor: '#f85149'
 });
 
-// 2. Pure Price Line Series (for Line Chart mode)
+// 2. Line Break Candle Series (Rendered as thick block candles without wicks)
+const lineBreakSeries = chart.addCandlestickSeries({
+    upColor: '#00e676', downColor: '#ff1744',
+    borderVisible: true,
+    borderColor: '#30363d',
+    wickVisible: false,
+    visible: false
+});
+
+// 3. Pure Line Series
 const priceLineSeries = chart.addLineSeries({
-    color: '#2979ff',
-    lineWidth: 2,
-    visible: false // off by default, toggled via button
+    color: '#2979ff', lineWidth: 2, visible: false
 });
 
-// 3. Moving Average Trend Line Series (Overlay mode)
-const maLineSeries = chart.addLineSeries({
-    color: '#e3b341',
+// 4. Area Chart Series (Gradient Fill)
+const areaSeries = chart.addAreaSeries({
+    topColor: 'rgba(41, 121, 255, 0.45)',
+    bottomColor: 'rgba(41, 121, 255, 0.01)',
+    lineColor: '#2979ff',
     lineWidth: 2,
-    lineStyle: 0,
-    visible: true
+    visible: false
+});
+
+// 5. Indicators (Overlays)
+const maLineSeries = chart.addLineSeries({
+    color: '#e3b341', lineWidth: 2, visible: true
+});
+const bbUpperSeries = chart.addLineSeries({
+    color: '#8957e5', lineWidth: 1, lineStyle: 2, visible: false
+});
+const bbLowerSeries = chart.addLineSeries({
+    color: '#8957e5', lineWidth: 1, lineStyle: 2, visible: false
 });
 
 window.addEventListener('resize', () => {
     chart.applyOptions({ width: chartContainer.clientWidth });
 });
 
+let rawCandles = [];
 let lastCandle = null;
-let currentChartMode = 'candles'; // 'candles' or 'line'
+let currentChartMode = 'candles';
 let showMaLine = true;
+let showBollinger = false;
 
-// Helper: Calculate 9-period Simple Moving Average for the line overlay
+// Three-Line Break (TLB) Conversion Algorithm
+function calculateLineBreak(candles, lineCount = 3) {
+    if (!candles || candles.length === 0) return [];
+
+    const blocks = [];
+    // Seed first block
+    blocks.push({
+        time: candles[0].time,
+        open: candles[0].open,
+        high: Math.max(candles[0].open, candles[0].close),
+        low: Math.min(candles[0].open, candles[0].close),
+        close: candles[0].close
+    });
+
+    for (let i = 1; i < candles.length; i++) {
+        const c = candles[i];
+        const lastBlock = blocks[blocks.length - 1];
+        const isUpTrend = lastBlock.close > lastBlock.open;
+
+        // Check reversal condition against the previous N blocks
+        const slice = blocks.slice(-lineCount);
+        const maxHigh = Math.max(...slice.map(b => Math.max(b.open, b.close)));
+        const minLow = Math.min(...slice.map(b => Math.min(b.open, b.close)));
+
+        if (c.close > (isUpTrend ? lastBlock.close : maxHigh)) {
+            // New upward block
+            blocks.push({
+                time: c.time,
+                open: isUpTrend ? lastBlock.close : maxHigh,
+                high: c.close,
+                low: isUpTrend ? lastBlock.close : maxHigh,
+                close: c.close
+            });
+        } else if (c.close < (isUpTrend ? minLow : lastBlock.close)) {
+            // New downward block
+            blocks.push({
+                time: c.time,
+                open: isUpTrend ? minLow : lastBlock.close,
+                high: isUpTrend ? minLow : lastBlock.close,
+                low: c.close,
+                close: c.close
+            });
+        }
+    }
+    return blocks;
+}
+
+// Indicator Helpers: SMA & Bollinger Bands
 function calculateSMA(data, count) {
     const result = [];
     for (let i = 0; i < data.length; i++) {
         if (i < count - 1) continue;
         let sum = 0;
-        for (let j = 0; j < count; j++) {
-            sum += data[i - j].close;
-        }
+        for (let j = 0; j < count; j++) sum += data[i - j].close;
         result.push({ time: data[i].time, value: +(sum / count).toFixed(2) });
     }
     return result;
 }
 
-// Fetch candles and update both candlestick and line datasets
+function calculateBollingerBands(data, count = 20, multiplier = 2) {
+    const upper = [], lower = [];
+    for (let i = 0; i < data.length; i++) {
+        if (i < count - 1) continue;
+        let sum = 0;
+        for (let j = 0; j < count; j++) sum += data[i - j].close;
+        const mean = sum / count;
+        let varianceSum = 0;
+        for (let j = 0; j < count; j++) varianceSum += Math.pow(data[i - j].close - mean, 2);
+        const stdDev = Math.sqrt(varianceSum / count);
+
+        upper.push({ time: data[i].time, value: +(mean + multiplier * stdDev).toFixed(2) });
+        lower.push({ time: data[i].time, value: +(mean - multiplier * stdDev).toFixed(2) });
+    }
+    return { upper, lower };
+}
+
+// Data synchronization
 async function refreshChart() {
     try {
         const res = await fetch('/api/bot/candles?symbol=BTCUSD&resolution=1m');
         const data = await res.json();
         if (!data || data.length === 0) return;
 
-        // Formatted candles
-        const formattedCandles = data.map(d => ({
+        rawCandles = data.map(d => ({
             time: Math.floor(d.time),
             open: d.open,
             high: d.high,
@@ -74,64 +153,88 @@ async function refreshChart() {
             close: d.close
         })).sort((a, b) => a.time - b.time);
 
-        // Formatted line data (using close price)
-        const formattedLine = formattedCandles.map(c => ({
-            time: c.time,
-            value: c.close
-        }));
+        // 1. Populate Candles
+        candleSeries.setData(rawCandles);
 
-        candleSeries.setData(formattedCandles);
-        priceLineSeries.setData(formattedLine);
+        // 2. Populate Line & Area
+        const lineData = rawCandles.map(c => ({ time: c.time, value: c.close }));
+        priceLineSeries.setData(lineData);
+        areaSeries.setData(lineData);
 
-        // Calculate and plot the Moving Average Line
-        const maData = calculateSMA(formattedCandles, 9);
-        maLineSeries.setData(maData);
+        // 3. Populate 3-Line Break
+        const lineBreakData = calculateLineBreak(rawCandles, 3);
+        lineBreakSeries.setData(lineBreakData);
 
-        lastCandle = { ...formattedCandles[formattedCandles.length - 1] };
+        // 4. Overlays
+        maLineSeries.setData(calculateSMA(rawCandles, 9));
+        const bb = calculateBollingerBands(rawCandles, 20, 2);
+        bbUpperSeries.setData(bb.upper);
+        bbLowerSeries.setData(bb.lower);
 
-        const priceTag = document.getElementById('price-tag');
-        if (priceTag && lastCandle) {
-            priceTag.innerText = `$${lastCandle.close.toFixed(2)}`;
-            priceTag.style.color = '#e3b341';
-        }
+        lastCandle = { ...rawCandles[rawCandles.length - 1] };
+        updatePriceDisplay(lastCandle.close, 0);
     } catch (e) {
         console.error("Failed to load candles:", e);
     }
 }
 
-// Chart Mode Switching (Candles vs Pure Line)
+// View switcher
 function switchChartType(type) {
     currentChartMode = type;
-    const btnCandles = document.getElementById('btn-candles');
-    const btnLine = document.getElementById('btn-line');
+    const buttons = {
+        candles: document.getElementById('btn-candles'),
+        line: document.getElementById('btn-line'),
+        area: document.getElementById('btn-area'),
+        linebreak: document.getElementById('btn-linebreak')
+    };
 
-    if (type === 'candles') {
-        candleSeries.applyOptions({ visible: true });
-        priceLineSeries.applyOptions({ visible: false });
-        btnCandles.classList.add('active');
-        btnLine.classList.remove('active');
-    } else {
-        candleSeries.applyOptions({ visible: false });
-        priceLineSeries.applyOptions({ visible: true });
-        btnLine.classList.add('active');
-        btnCandles.classList.remove('active');
+    Object.values(buttons).forEach(btn => btn && btn.classList.remove('active'));
+    if (buttons[type]) buttons[type].classList.add('active');
+
+    candleSeries.applyOptions({ visible: type === 'candles' });
+    priceLineSeries.applyOptions({ visible: type === 'line' });
+    areaSeries.applyOptions({ visible: type === 'area' });
+    lineBreakSeries.applyOptions({ visible: type === 'linebreak' });
+
+    const badge = document.getElementById('chart-mode-badge');
+    if (badge) {
+        badge.innerText = type === 'candles' ? 'Candlestick' :
+                         (type === 'line' ? 'Line Chart' :
+                         (type === 'area' ? 'Area Gradient' : 'Three-Line Break'));
     }
 }
 
-// Toggle MA Overlay Line
+// Indicator Toggles
 function toggleMovingAverage() {
     showMaLine = !showMaLine;
     maLineSeries.applyOptions({ visible: showMaLine });
     const btn = document.getElementById('btn-ma');
-    btn.innerText = showMaLine ? "MA Line: ON" : "MA Line: OFF";
-    btn.className = showMaLine ? "btn btn-outline-warning active" : "btn btn-outline-secondary";
+    btn.innerText = showMaLine ? "MA(9): ON" : "MA(9): OFF";
+    btn.className = showMaLine ? "btn btn-outline-warning btn-chart-mode active" : "btn btn-outline-secondary btn-chart-mode";
+}
+
+function toggleBollingerBands() {
+    showBollinger = !showBollinger;
+    bbUpperSeries.applyOptions({ visible: showBollinger });
+    bbLowerSeries.applyOptions({ visible: showBollinger });
+    const btn = document.getElementById('btn-bb');
+    btn.innerText = showBollinger ? "BB(20): ON" : "BB(20): OFF";
+    btn.className = showBollinger ? "btn btn-outline-info btn-chart-mode active" : "btn btn-outline-secondary btn-chart-mode";
+}
+
+function updatePriceDisplay(price, jitter) {
+    const priceTag = document.getElementById('price-tag');
+    if (priceTag) {
+        priceTag.innerText = `$${price.toFixed(2)}`;
+        priceTag.style.color = jitter >= 0 ? '#2ea043' : '#f85149';
+    }
 }
 
 // Initial Sync & 5-Second Delta Polling
 refreshChart();
 setInterval(refreshChart, 5000);
 
-// Sub-second Live Micro-Tick Simulation (updates Candle + Line simultaneously)
+// Live tick animation
 setInterval(() => {
     if (!lastCandle) return;
     const jitter = (Math.random() - 0.49) * 2.5;
@@ -139,18 +242,15 @@ setInterval(() => {
     if (lastCandle.close > lastCandle.high) lastCandle.high = lastCandle.close;
     if (lastCandle.close < lastCandle.low) lastCandle.low = lastCandle.close;
 
-    // Update both series in real time
+    // Update all series simultaneously
     candleSeries.update(lastCandle);
     priceLineSeries.update({ time: lastCandle.time, value: lastCandle.close });
+    areaSeries.update({ time: lastCandle.time, value: lastCandle.close });
 
-    const priceTag = document.getElementById('price-tag');
-    if (priceTag) {
-        priceTag.innerText = `$${lastCandle.close.toFixed(2)}`;
-        priceTag.style.color = jitter >= 0 ? '#2ea043' : '#f85149';
-    }
+    updatePriceDisplay(lastCandle.close, jitter);
 }, 800);
 
-// Ollama / Fallback AI Analysis
+// AI Trigger
 async function runAiAnalysis() {
     const reasonEl = document.getElementById('ai-reason');
     reasonEl.innerText = "Querying algorithmic intelligence & momentum...";
@@ -168,14 +268,14 @@ async function runAiAnalysis() {
     }
 }
 
-// Delta Order Dispatcher
+// Order Dispatcher
 async function executeTrade(side) {
     const status = document.getElementById('execution-status');
     status.innerText = `Submitting ${side.toUpperCase()} order...`;
     try {
         const res = await fetch(`/api/bot/execute?productId=27&size=1&side=${side}`, { method: 'POST' });
         const result = await res.text();
-        status.innerText = "Order submitted. Response: " + result.substring(0, 45) + "...";
+        status.innerText = "Order submitted: " + result.substring(0, 45) + "...";
     } catch (e) {
         status.innerText = "Failed to dispatch order.";
     }

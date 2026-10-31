@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Delta AI Trading Bot - Nishitech</title>
+    <title>Delta AI Trading Bot - Nishitech Pro</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -13,58 +13,71 @@
         .badge-buy { background: #238636; }
         .badge-sell { background: #da3633; }
         .badge-hold { background: #8957e5; }
-        .btn-group-toggle .btn { padding: 4px 12px; font-size: 13px; }
+        .btn-chart-mode { font-size: 12px; padding: 4px 10px; }
     </style>
 </head>
-<body class="p-4">
+<body class="p-3">
 <div class="container-fluid">
-    <header class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
-        <h4 class="m-0 text-info">Nishitech AI Execution Bot <span class="badge bg-secondary fs-6">Delta Exchange</span></h4>
-        <div class="d-flex align-items-center gap-2">
-            <!-- Toggle between Candlestick and Pure Line Chart -->
-            <div class="btn-group btn-group-toggle bg-dark rounded p-1 border border-secondary" role="group">
-                <button id="btn-candles" type="button" class="btn btn-outline-info active" onclick="switchChartType('candles')">Candles</button>
-                <button id="btn-line" type="button" class="btn btn-outline-info" onclick="switchChartType('line')">Pure Line</button>
-                <button id="btn-ma" type="button" class="btn btn-outline-warning" onclick="toggleMovingAverage()">MA Line: ON</button>
+    <header class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom border-secondary gap-2">
+        <div>
+            <h4 class="m-0 text-info">Nishitech AI Execution Engine <span class="badge bg-secondary fs-6">Delta Exchange</span></h4>
+        </div>
+
+        <!-- Chart Type & Indicator Controls -->
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <div class="btn-group bg-dark rounded p-1 border border-secondary" role="group">
+                <button id="btn-candles" type="button" class="btn btn-outline-info btn-chart-mode active" onclick="switchChartType('candles')">Candles</button>
+                <button id="btn-line" type="button" class="btn btn-outline-info btn-chart-mode" onclick="switchChartType('line')">Line</button>
+                <button id="btn-area" type="button" class="btn btn-outline-info btn-chart-mode" onclick="switchChartType('area')">Area</button>
+                <button id="btn-linebreak" type="button" class="btn btn-outline-warning btn-chart-mode" onclick="switchChartType('linebreak')">3-Line Break</button>
             </div>
-            <button class="btn btn-primary btn-sm ms-2" onclick="refreshChart()">Sync Delta Data</button>
+
+            <div class="btn-group bg-dark rounded p-1 border border-secondary" role="group">
+                <button id="btn-ma" type="button" class="btn btn-outline-warning btn-chart-mode active" onclick="toggleMovingAverage()">MA(9): ON</button>
+                <button id="btn-bb" type="button" class="btn btn-outline-secondary btn-chart-mode" onclick="toggleBollingerBands()">BB(20): OFF</button>
+            </div>
+
+            <button class="btn btn-primary btn-sm" onclick="refreshChart()">Sync Delta Data</button>
             <button class="btn btn-warning btn-sm" onclick="runAiAnalysis()">Ask Ollama AI</button>
         </div>
     </header>
 
-    <div class="row g-4">
-        <!-- Chart Container -->
+    <div class="row g-3">
+        <!-- Chart Container Card -->
         <div class="col-lg-8">
             <div class="card card-custom p-3">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span class="fw-bold">BTCUSD Perpetuals (Delta India)</span>
-                    <span id="price-tag" class="fs-5 text-warning">$0.00</span>
+                    <div>
+                        <span class="fw-bold fs-6">BTCUSD Perpetuals</span>
+                        <span id="chart-mode-badge" class="badge bg-dark border border-secondary ms-2 text-info">Candlestick</span>
+                    </div>
+                    <span id="price-tag" class="fs-5 fw-bold text-warning">$0.00</span>
                 </div>
                 <div id="chart-container"></div>
             </div>
         </div>
 
-        <!-- AI Engine & Control Panel -->
+        <!-- AI Engine & Execution Panel -->
         <div class="col-lg-4">
             <div class="card card-custom p-3 mb-3">
                 <h5 class="border-bottom border-secondary pb-2">Ollama AI Analysis</h5>
-                <div class="mt-3">
-                    <p class="mb-1 text-secondary">Recommended Action:</p>
+                <div class="mt-2">
+                    <p class="mb-1 text-secondary small">Action Signal:</p>
                     <h3 id="ai-action"><span class="badge badge-hold">AWAITING</span></h3>
                 </div>
-                <div class="mt-3">
-                    <p class="mb-1 text-secondary">Confidence Score:</p>
-                    <div class="progress" style="height: 10px; background: #30363d;">
+                <div class="mt-2">
+                    <p class="mb-1 text-secondary small">Confidence Level:</p>
+                    <div class="progress" style="height: 8px; background: #30363d;">
                         <div id="ai-confidence" class="progress-bar bg-info" style="width: 0%"></div>
                     </div>
                 </div>
-                <div class="mt-3">
-                    <p class="mb-1 text-secondary">Calculated RSI (14):</p>
+                <div class="mt-2">
+                    <p class="mb-1 text-secondary small">Calculated RSI (14):</p>
                     <span id="rsi-val" class="fw-bold">--</span>
                 </div>
-                <div class="mt-3">
-                    <p class="mb-1 text-secondary">Model Reasoning:</p>
-                    <p id="ai-reason" class="small text-light bg-dark p-2 rounded">Click "Ask Ollama AI" to query market reasoning.</p>
+                <div class="mt-2">
+                    <p class="mb-1 text-secondary small">Engine Rationale:</p>
+                    <p id="ai-reason" class="small text-light bg-dark p-2 rounded mb-0">Click "Ask Ollama AI" to query the decision model.</p>
                 </div>
             </div>
 
