@@ -1,0 +1,12 @@
+server:
+  port: 8080
+
+delta:
+  # Demo/Testnet API base URL for keys generated on demo.delta.exchange
+  base-url: https://cdn-ind.testnet.deltaex.org
+  api-key: "8X4DY1wjTW3ECoNUjGAt9m4Mws8kr4"
+  api-secret: "3CKBfS4wzQpqDtVtVfRPrw3sZoQCs05hzgQmgP07eoyk0AxuHk8kIVoC5jUJ"
+
+ollama:
+  url: http://localhost:11434/api/generate
+  model: llama3:latest
