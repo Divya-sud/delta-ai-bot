@@ -3,95 +3,233 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Delta AI Trading Bot - Nishitech Pro</title>
+    <title>Delta Exchange Trading Terminal - Nishitech Pro</title>
+    <!-- Lightweight Charts V4 -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
-        body { background: #0b0e14; color: #e1e3e6; font-family: Inter, sans-serif; }
-        .card-custom { background: #161b22; border: 1px solid #30363d; border-radius: 8px; }
-        #chart-container { height: 480px; width: 100%; position: relative; }
-        .badge-buy { background: #238636; }
-        .badge-sell { background: #da3633; }
-        .badge-hold { background: #8957e5; }
-        .btn-chart-mode { font-size: 12px; padding: 4px 10px; }
+        :root {
+            --bg-root: #0a0d14;
+            --bg-panel: #131722;
+            --border-color: #242936;
+            --text-primary: #e1e3e6;
+            --text-muted: #787b86;
+            --green: #26a69a;
+            --red: #ef5350;
+            --accent-yellow: #f0b90b;
+        }
+        body { background-color: var(--bg-root); color: var(--text-primary); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; margin: 0; padding: 0; overflow-x: hidden; }
+
+        /* Delta Top Bar */
+        .delta-header { background: #0f131c; border-bottom: 1px solid var(--border-color); padding: 8px 16px; }
+        .stat-box { display: flex; flex-direction: column; padding: 0 14px; border-left: 1px solid var(--border-color); }
+        .stat-title { font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+        .stat-val { font-size: 12px; font-weight: 600; }
+
+        /* Chart Sub-Header Toolbar */
+        .chart-toolbar { background: var(--bg-panel); border-bottom: 1px solid var(--border-color); padding: 6px 12px; display: flex; gap: 4px; align-items: center; }
+        .tf-btn, .view-btn { background: transparent; border: none; color: var(--text-muted); font-size: 11px; font-weight: 600; padding: 3px 7px; border-radius: 4px; cursor: pointer; }
+        .tf-btn:hover, .view-btn:hover { color: #fff; background: rgba(255,255,255,0.06); }
+        .tf-btn.active, .view-btn.active { color: #2979ff; background: rgba(41,121,255,0.12); }
+
+        /* Container Panels */
+        .panel { background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 4px; }
+        #chart-container { height: 500px; width: 100%; position: relative; }
+
+        /* Orderbook Table */
+        .ob-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        .ob-table th { color: var(--text-muted); padding: 4px 8px; font-weight: 500; text-align: right; }
+        .ob-table td { padding: 2px 8px; text-align: right; font-family: 'Roboto Mono', monospace; }
+        .ob-ask { color: var(--red); }
+        .ob-bid { color: var(--green); }
+        .ob-depth-bar { position: absolute; right: 0; top: 0; bottom: 0; z-index: 0; opacity: 0.15; }
+
+        /* Trading Ticket */
+        .trade-tab { flex: 1; text-align: center; padding: 8px; font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; }
+        .trade-tab.long { color: var(--green); }
+        .trade-tab.long.active { border-color: var(--green); background: rgba(38,166,154,0.1); }
+        .trade-tab.short { color: var(--red); }
+        .trade-tab.short.active { border-color: var(--red); background: rgba(239,83,80,0.1); }
+        .leverage-badge { background: #1f2533; border: 1px solid var(--border-color); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+        .btn-order-long { background: var(--green); border: none; font-weight: 700; width: 100%; padding: 10px; border-radius: 4px; color: #fff; }
+        .btn-order-short { background: var(--red); border: none; font-weight: 700; width: 100%; padding: 10px; border-radius: 4px; color: #fff; }
+
+        /* AI Reasoning Box */
+        .ai-banner { background: linear-gradient(135deg, rgba(41,121,255,0.12), rgba(137,87,229,0.12)); border: 1px solid rgba(41,121,255,0.3); border-radius: 6px; padding: 12px; }
     </style>
 </head>
-<body class="p-3">
-<div class="container-fluid">
-    <header class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom border-secondary gap-2">
-        <div>
-            <h4 class="m-0 text-info">Nishitech AI Execution Engine <span class="badge bg-secondary fs-6">Delta Exchange</span></h4>
+<body>
+<!-- Top Stats Bar -->
+<header class="delta-header d-flex flex-wrap align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-3">
+        <span class="badge bg-warning text-dark fw-bold">Demo</span>
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-star text-warning"></i>
+            <h6 class="m-0 fw-bold">BTCUSD</h6>
+            <span id="top-price" class="text-success fw-bold fs-5">$77,391.5</span>
         </div>
-
-        <!-- Chart Type & Indicator Controls -->
-        <div class="d-flex flex-wrap align-items-center gap-2">
-            <div class="btn-group bg-dark rounded p-1 border border-secondary" role="group">
-                <button id="btn-candles" type="button" class="btn btn-outline-info btn-chart-mode active" onclick="switchChartType('candles')">Candles</button>
-                <button id="btn-line" type="button" class="btn btn-outline-info btn-chart-mode" onclick="switchChartType('line')">Line</button>
-                <button id="btn-area" type="button" class="btn btn-outline-info btn-chart-mode" onclick="switchChartType('area')">Area</button>
-                <button id="btn-linebreak" type="button" class="btn btn-outline-warning btn-chart-mode" onclick="switchChartType('linebreak')">3-Line Break</button>
-            </div>
-
-            <div class="btn-group bg-dark rounded p-1 border border-secondary" role="group">
-                <button id="btn-ma" type="button" class="btn btn-outline-warning btn-chart-mode active" onclick="toggleMovingAverage()">MA(9): ON</button>
-                <button id="btn-bb" type="button" class="btn btn-outline-secondary btn-chart-mode" onclick="toggleBollingerBands()">BB(20): OFF</button>
-            </div>
-
-            <button class="btn btn-primary btn-sm" onclick="refreshChart()">Sync Delta Data</button>
-            <button class="btn btn-warning btn-sm" onclick="runAiAnalysis()">Ask Ollama AI</button>
+        <div class="stat-box">
+            <span class="stat-title">24h Change</span>
+            <span id="top-change" class="stat-val text-success">+0.04%</span>
         </div>
-    </header>
+        <div class="stat-box">
+            <span class="stat-title">Index Price</span>
+            <span id="top-index" class="stat-val">$77,390.1</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-title">24h High</span>
+            <span id="top-high" class="stat-val">$80,157.0</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-title">24h Low</span>
+            <span id="top-low" class="stat-val">$76,980.0</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-title">24h Volume</span>
+            <span id="top-vol" class="stat-val">$108.6M</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-title">Funding / Countdown</span>
+            <span id="top-funding" class="stat-val text-warning">0.0100% / 05:22:10</span>
+        </div>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+        <span class="badge bg-dark border border-secondary px-3 py-2 text-warning fs-6">Balance: ₹8,500.00</span>
+        <button class="btn btn-sm btn-outline-info" onclick="runAiAnalysis()"><i class="bi bi-cpu me-1"></i>Ask Ollama</button>
+    </div>
+</header>
 
-    <div class="row g-3">
-        <!-- Chart Container Card -->
-        <div class="col-lg-8">
-            <div class="card card-custom p-3">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div>
-                        <span class="fw-bold fs-6">BTCUSD Perpetuals</span>
-                        <span id="chart-mode-badge" class="badge bg-dark border border-secondary ms-2 text-info">Candlestick</span>
+<!-- Main Workspace Layout -->
+<div class="container-fluid p-2">
+    <div class="row g-2">
+        <!-- Left Charting Section -->
+        <div class="col-xl-7 col-lg-7">
+            <div class="panel">
+                <!-- Chart Sub-Toolbar -->
+                <div class="chart-toolbar d-flex flex-wrap justify-content-between">
+                    <div class="d-flex align-items-center gap-1">
+                        <span class="text-muted small me-1">Timeframe:</span>
+                        <button class="tf-btn" onclick="setTimeframe('1m')">1m</button>
+                        <button class="tf-btn" onclick="setTimeframe('5m')">5m</button>
+                        <button class="tf-btn" onclick="setTimeframe('15m')">15m</button>
+                        <button class="tf-btn active" onclick="setTimeframe('1h')">1h</button>
+                        <button class="tf-btn" onclick="setTimeframe('4h')">4h</button>
+                        <button class="tf-btn" onclick="setTimeframe('1d')">1D</button>
+                        <div class="vr mx-2 bg-secondary" style="height: 16px;"></div>
+                        <span class="text-muted small me-1">Style:</span>
+                        <button class="view-btn active" onclick="switchStyle('candles')">Candles</button>
+                        <button class="view-btn" onclick="switchStyle('linebreak')">3-Line Break</button>
+                        <button class="view-btn" onclick="switchStyle('heikin')">Heikin-Ashi</button>
+                        <button class="view-btn" onclick="switchStyle('line')">Line</button>
+                        <button class="view-btn" onclick="switchStyle('area')">Area</button>
                     </div>
-                    <span id="price-tag" class="fs-5 fw-bold text-warning">$0.00</span>
+                    <div class="d-flex align-items-center gap-1">
+                        <button id="btn-ma" class="view-btn active" onclick="toggleMA()">MA(9): ON</button>
+                        <button id="btn-bb" class="view-btn" onclick="toggleBB()">BB(20): OFF</button>
+                    </div>
                 </div>
+                <!-- Chart Canvas -->
                 <div id="chart-container"></div>
             </div>
-        </div>
 
-        <!-- AI Engine & Execution Panel -->
-        <div class="col-lg-4">
-            <div class="card card-custom p-3 mb-3">
-                <h5 class="border-bottom border-secondary pb-2">Ollama AI Analysis</h5>
-                <div class="mt-2">
-                    <p class="mb-1 text-secondary small">Action Signal:</p>
-                    <h3 id="ai-action"><span class="badge badge-hold">AWAITING</span></h3>
-                </div>
-                <div class="mt-2">
-                    <p class="mb-1 text-secondary small">Confidence Level:</p>
-                    <div class="progress" style="height: 8px; background: #30363d;">
-                        <div id="ai-confidence" class="progress-bar bg-info" style="width: 0%"></div>
+            <!-- Ollama AI Reasoning Strip -->
+            <div class="ai-banner mt-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-bold text-info"><i class="bi bi-robot me-1"></i>Nishitech Ollama Quantitative Engine</span>
+                    <div>
+                        <span class="text-muted me-2 small">Signal:</span>
+                        <span id="ai-action" class="badge bg-purple px-2 py-1 fs-6">AWAITING</span>
+                        <span class="text-muted ms-3 me-2 small">RSI(14):</span>
+                        <span id="rsi-val" class="fw-bold text-warning">--</span>
                     </div>
                 </div>
-                <div class="mt-2">
-                    <p class="mb-1 text-secondary small">Calculated RSI (14):</p>
-                    <span id="rsi-val" class="fw-bold">--</span>
-                </div>
-                <div class="mt-2">
-                    <p class="mb-1 text-secondary small">Engine Rationale:</p>
-                    <p id="ai-reason" class="small text-light bg-dark p-2 rounded mb-0">Click "Ask Ollama AI" to query the decision model.</p>
-                </div>
+                <p id="ai-reason" class="text-light small m-0">Click "Ask Ollama" to compute neural momentum & order flow analysis.</p>
             </div>
+        </div>
 
-            <div class="card card-custom p-3">
-                <h5 class="border-bottom border-secondary pb-2">Order Execution</h5>
-                <div class="d-flex gap-2 mt-3">
-                    <button class="btn btn-success flex-fill" onclick="executeTrade('buy')">Execute BUY</button>
-                    <button class="btn btn-danger flex-fill" onclick="executeTrade('sell')">Execute SELL</button>
+        <!-- Middle Level-2 Order Book Section -->
+        <div class="col-xl-2 col-lg-2">
+            <div class="panel p-2 h-100">
+                <div class="d-flex justify-content-between align-items-center border-bottom border-secondary pb-1 mb-2">
+                    <span class="fw-bold small">Order Book</span>
+                    <span class="text-muted" style="font-size: 10px;">0.1 Tick</span>
                 </div>
-                <div id="execution-status" class="small mt-2 text-secondary">Status: Ready</div>
+                <table class="ob-table mb-2">
+                    <thead>
+                    <tr><th>Price</th><th>Size</th><th>Total</th></tr>
+                    </thead>
+                    <tbody id="ob-asks">
+                    <!-- Populated dynamically via JS -->
+                    </tbody>
+                </table>
+                <div class="py-1 text-center my-1 border-top border-bottom border-secondary">
+                    <span id="ob-mid-price" class="fw-bold fs-6 text-success">$77,391.5</span>
+                </div>
+                <table class="ob-table">
+                    <tbody id="ob-bids">
+                    <!-- Populated dynamically via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Right Trading Ticket Section -->
+        <div class="col-xl-3 col-lg-3">
+            <div class="panel p-3">
+                <!-- Long / Short Switcher -->
+                <div class="d-flex mb-3 border-bottom border-secondary">
+                    <div id="tab-long" class="trade-tab long active" onclick="setSide('buy')">Long</div>
+                    <div id="tab-short" class="trade-tab short" onclick="setSide('sell')">Short</div>
+                </div>
+
+                <!-- Leverage & Order Type -->
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted small">Leverage</span>
+                    <span class="leverage-badge" onclick="cycleLeverage()">10x <i class="bi bi-chevron-down"></i></span>
+                </div>
+
+                <div class="btn-group w-100 mb-3" role="group">
+                    <button id="type-market" type="button" class="btn btn-sm btn-dark border-secondary active" onclick="setOrderType('market_order')">Market</button>
+                    <button id="type-limit" type="button" class="btn btn-sm btn-dark border-secondary" onclick="setOrderType('limit_order')">Limit</button>
+                </div>
+
+                <!-- Limit Price (Hidden when Market is active) -->
+                <div id="limit-price-group" class="mb-2" style="display: none;">
+                    <label class="text-muted small">Order Price (USD)</label>
+                    <input id="input-price" type="number" class="form-control form-control-sm bg-dark text-light border-secondary" value="77391.5">
+                </div>
+
+                <!-- Quantity Input -->
+                <div class="mb-2">
+                    <label class="text-muted small">Quantity (Lots = 0.001 BTC)</label>
+                    <input id="input-qty" type="number" class="form-control form-control-sm bg-dark text-light border-secondary" value="1" min="1">
+                </div>
+
+                <!-- Quick % Sliders -->
+                <div class="d-flex gap-1 mb-3">
+                    <button class="btn btn-sm btn-dark border-secondary flex-fill" style="font-size: 10px;" onclick="setQtyPercent(10)">10%</button>
+                    <button class="btn btn-sm btn-dark border-secondary flex-fill" style="font-size: 10px;" onclick="setQtyPercent(25)">25%</button>
+                    <button class="btn btn-sm btn-dark border-secondary flex-fill" style="font-size: 10px;" onclick="setQtyPercent(50)">50%</button>
+                    <button class="btn btn-sm btn-dark border-secondary flex-fill" style="font-size: 10px;" onclick="setQtyPercent(100)">100%</button>
+                </div>
+
+                <div class="d-flex justify-content-between small text-muted mb-1">
+                    <span>Margin Required</span>
+                    <span id="margin-req" class="text-light">$7.74 USD</span>
+                </div>
+                <div class="d-flex justify-content-between small text-muted mb-3">
+                    <span>Available Balance</span>
+                    <span class="text-light">₹8,500.00 (Demo)</span>
+                </div>
+
+                <button id="btn-submit-order" class="btn-order-long" onclick="dispatchOrder()">Place Long Order</button>
+                <div id="order-status" class="small text-secondary text-center mt-2">Ready to dispatch</div>
             </div>
         </div>
     </div>
 </div>
+
 <script src="app.js"></script>
 </body>
 </html>
